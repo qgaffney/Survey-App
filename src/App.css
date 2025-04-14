@@ -1,5 +1,5 @@
 .App {
-  max-width: 800px;
+  max-width: 1200px;
   margin: 0 auto;
   padding: 20px;
 }
@@ -7,33 +7,52 @@
 h1 {
   text-align: center;
   color: #333;
+  margin-bottom: 20px;
 }
 
-section {
-  margin: 20px 0;
+.side-by-side {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.column {
+  flex: 1;
+  padding: 15px;
+  border: 1px solid #ddd;
+  border-radius: 5px;
+  background-color: #f9f9f9;
+}
+
+section.details {
+  margin-top: 20px;
   padding: 20px;
   border: 1px solid #ddd;
   border-radius: 5px;
+  background-color: #fff;
 }
 
 form {
   display: flex;
   gap: 10px;
-  margin-bottom: 20px;
+  margin-bottom: 15px;
 }
 
 input {
   padding: 8px;
   flex: 1;
+  border: 1px solid #ccc;
+  border-radius: 4px;
 }
 
 button {
-  padding: 8px 16px;
+  padding: 8px 12px;
   background-color: #007bff;
   color: white;
   border: none;
-  border-radius: 5px;
+  border-radius: 4px;
   cursor: pointer;
+  margin-left: 5px;
 }
 
 button:hover {
@@ -43,25 +62,46 @@ button:hover {
 ul {
   list-style: none;
   padding: 0;
+  max-height: 300px;
+  overflow-y: auto;
 }
 
 li {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 10px;
+  padding: 8px;
   border-bottom: 1px solid #eee;
 }
 
-li button {
+li button:nth-child(2) {
   background-color: #dc3545;
 }
 
-li button:hover {
+li button:nth-child(2):hover {
   background-color: #c82333;
+}
+
+li button:nth-child(3) {
+  background-color: #28a745;
+}
+
+li button:nth-child(3):hover {
+  background-color: #218838;
 }
 
 p {
   color: #666;
   font-style: italic;
+  text-align: center;
+}
+
+h2 {
+  margin-top: 0;
+  color: #444;
+}
+
+h3 {
+  margin: 10px 0;
+  color: #555;
 }
