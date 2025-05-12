@@ -1,11 +1,18 @@
 import React, { useState, useEffect } from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { openDB } from 'idb';
+import AuthPage from './AuthPage';
+import SurveyApp from './SurveyApp';
+import SurveyResponsePage from './SurveyResponsePage';
 import './App.css';
 
-const dbPromise = openDB('Survey-AppDB', 2, {
-  upgrade(db, oldVersion, newVersion, transaction) {
+// Database setup with users, surveys, respondents, questions, surveyRespondents, surveyQuestions, and responses stores
+const dbPromise = openDB('Survey-AppDB', 5, {
+  upgrade(db, oldVersion, newVersion) {
     console.log(`Upgrading database from version ${oldVersion} to ${newVersion}`);
-
+    if (!db.objectStoreNames.contains('users')) {
+      db.createObjectStore('users', { keyPath: 'email' });
+    }
     if (!db.objectStoreNames.contains('surveys')) {
       db.createObjectStore('surveys', { keyPath: 'id' });
     }
@@ -21,254 +28,95 @@ const dbPromise = openDB('Survey-AppDB', 2, {
     if (!db.objectStoreNames.contains('surveyQuestions')) {
       db.createObjectStore('surveyQuestions', { keyPath: 'id', autoIncrement: true });
     }
+    if (!db.objectStoreNames.contains('responses')) {
+      const responsesStore = db.createObjectStore('responses', { keyPath: 'id', autoIncrement: true });
+      // Create index on the responses store
+      responsesStore.createIndex('bySurveyQuestionRespondent', ['surveyId', 'questionId', 'respondentId'], {
+        unique: true,
+      });
+    }
   },
 });
 
 function App() {
-  const [surveys, setSurveys] = useState([]);
-  const [surveyName, setSurveyName] = useState('');
-  const [respondents, setRespondents] = useState([]);
-  const [respondentFullName, setRespondentFullName] = useState('');
-  const [respondentEmail, setRespondentEmail] = useState('');
-  const [questions, setQuestions] = useState([]);
-  const [questionText, setQuestionText] = useState('');
-  const [surveyRespondents, setSurveyRespondents] = useState([]);
-  const [surveyQuestions, setSurveyQuestions] = useState([]);
-  const [selectedSurveyId, setSelectedSurveyId] = useState(null);
+  const [user, setUser] = useState(null);
   const [dbReady, setDbReady] = useState(false);
 
   useEffect(() => {
     const initializeDb = async () => {
       try {
         const db = await dbPromise;
-        console.log('Database initialized:', db.objectStoreNames);
+        console.log('Database initialized with stores:', Array.from(db.objectStoreNames));
         setDbReady(true);
-        const tx = db.transaction(['surveys', 'respondents', 'questions', 'surveyRespondents', 'surveyQuestions'], 'readonly');
-        setSurveys(await tx.objectStore('surveys').getAll());
-        setRespondents(await tx.objectStore('respondents').getAll());
-        setQuestions(await tx.objectStore('questions').getAll());
-        setSurveyRespondents(await tx.objectStore('surveyRespondents').getAll());
-        setSurveyQuestions(await tx.objectStore('surveyQuestions').getAll());
+        const storedUser = localStorage.getItem('user');
+        if (storedUser) {
+          console.log('Restoring user from localStorage:', storedUser);
+          setUser(JSON.parse(storedUser));
+        }
       } catch (error) {
-        console.error('Error initializing database:', error);
+        console.error('Failed to initialize database:', error);
       }
     };
     initializeDb();
   }, []);
 
-  const handleCreateSurvey = async (e) => {
-    e.preventDefault();
-    if (!surveyName.trim() || !dbReady) return;
-    const newSurvey = { id: Date.now(), name: surveyName };
-    const db = await dbPromise;
-    const tx = db.transaction('surveys', 'readwrite');
-    await tx.objectStore('surveys').add(newSurvey);
-    setSurveys([...surveys, newSurvey]);
-    setSurveyName('');
+  useEffect(() => {
+    console.log('User state changed:', user);
+  }, [user]);
+
+  const handleSignIn = async (email) => {
+    console.log('handleSignIn called with email:', email);
+    try {
+      setUser({ email });
+      localStorage.setItem('user', JSON.stringify({ email }));
+      console.log('User set and stored in localStorage:', email);
+    } catch (error) {
+      console.error('Error in handleSignIn:', error);
+    }
   };
 
-  const handleDeleteSurvey = async (id) => {
-    if (!dbReady) return;
-    const db = await dbPromise;
-    const tx = db.transaction(['surveys', 'surveyRespondents', 'surveyQuestions'], 'readwrite');
-    await tx.objectStore('surveys').delete(id);
-    const surveyRespondentsStore = tx.objectStore('surveyRespondents');
-    const surveyQuestionsStore = tx.objectStore('surveyQuestions');
-    const srToDelete = surveyRespondents.filter(sr => sr.surveyId === id);
-    const sqToDelete = surveyQuestions.filter(sq => sq.surveyId === id);
-    await Promise.all(srToDelete.map(sr => surveyRespondentsStore.delete(sr.id)));
-    await Promise.all(sqToDelete.map(sq => surveyQuestionsStore.delete(sq.id)));
-    setSurveys(surveys.filter(s => s.id !== id));
-    setSurveyRespondents(surveyRespondents.filter(sr => sr.surveyId !== id));
-    setSurveyQuestions(surveyQuestions.filter(sq => sq.surveyId !== id));
-    if (selectedSurveyId === id) setSelectedSurveyId(null);
+  const handleSignOut = () => {
+    console.log('Signing out user');
+    setUser(null);
+    localStorage.removeItem('user');
   };
 
-  const handleCreateRespondent = async (e) => {
-    e.preventDefault();
-    if (!respondentFullName.trim() || !respondentEmail.trim() || !dbReady) return;
-    const newRespondent = { id: Date.now(), fullName: respondentFullName, email: respondentEmail };
-    const db = await dbPromise;
-    const tx = db.transaction('respondents', 'readwrite');
-    await tx.objectStore('respondents').add(newRespondent);
-    setRespondents([...respondents, newRespondent]);
-    setRespondentFullName('');
-    setRespondentEmail('');
-  };
-
-  const handleDeleteRespondent = async (id) => {
-    if (!dbReady) return;
-    const db = await dbPromise;
-    const tx = db.transaction(['respondents', 'surveyRespondents'], 'readwrite');
-    await tx.objectStore('respondents').delete(id);
-    const surveyRespondentsStore = tx.objectStore('surveyRespondents');
-    const srToDelete = surveyRespondents.filter(sr => sr.respondentId === id);
-    await Promise.all(srToDelete.map(sr => surveyRespondentsStore.delete(sr.id)));
-    setRespondents(respondents.filter(r => r.id !== id));
-    setSurveyRespondents(surveyRespondents.filter(sr => sr.respondentId !== id));
-  };
-
-  const handleCreateQuestion = async (e) => {
-    e.preventDefault();
-    if (!questionText.trim() || !dbReady) return;
-    const newQuestion = { id: Date.now(), text: questionText };
-    const db = await dbPromise;
-    const tx = db.transaction('questions', 'readwrite');
-    await tx.objectStore('questions').add(newQuestion);
-    setQuestions([...questions, newQuestion]);
-    setQuestionText('');
-  };
-
-  const handleDeleteQuestion = async (id) => {
-    if (!dbReady) return;
-    const db = await dbPromise;
-    const tx = db.transaction(['questions', 'surveyQuestions'], 'readwrite');
-    await tx.objectStore('questions').delete(id);
-    const surveyQuestionsStore = tx.objectStore('surveyQuestions');
-    const sqToDelete = surveyQuestions.filter(sq => sq.questionId === id);
-    await Promise.all(sqToDelete.map(sq => surveyQuestionsStore.delete(sq.id)));
-    setQuestions(questions.filter(q => q.id !== id));
-    setSurveyQuestions(surveyQuestions.filter(sq => sq.questionId !== id));
-  };
-
-  const handleAssociateRespondent = async (surveyId, respondentId) => {
-    if (!dbReady || surveyRespondents.some(sr => sr.surveyId === surveyId && sr.respondentId === respondentId)) return;
-    const db = await dbPromise;
-    const newAssociation = { surveyId, respondentId };
-    const tx = db.transaction('surveyRespondents', 'readwrite');
-    const id = await tx.objectStore('surveyRespondents').add(newAssociation);
-    setSurveyRespondents([...surveyRespondents, { id, surveyId, respondentId }]);
-  };
-
-  const handleAssociateQuestion = async (surveyId, questionId) => {
-    if (!dbReady || surveyQuestions.some(sq => sq.surveyId === surveyId && sq.questionId === questionId)) return;
-    const db = await dbPromise;
-    const newAssociation = { surveyId, questionId };
-    const tx = db.transaction('surveyQuestions', 'readwrite');
-    const id = await tx.objectStore('surveyQuestions').add(newAssociation);
-    setSurveyQuestions([...surveyQuestions, { id, surveyId, questionId }]);
-  };
-
-  const getSurveyRespondents = () => {
-    if (!selectedSurveyId) return [];
-    return respondents.filter(r => 
-      surveyRespondents.some(sr => sr.surveyId === selectedSurveyId && sr.respondentId === r.id)
-    );
-  };
-
-  const getSurveyQuestions = () => {
-    if (!selectedSurveyId) return [];
-    return questions.filter(q => 
-      surveyQuestions.some(sq => sq.surveyId === selectedSurveyId && sq.questionId === q.id)
-    );
-  };
+  console.log('Rendering App, user:', user, 'dbReady:', dbReady);
 
   if (!dbReady) return <div>Loading database...</div>;
 
   return (
-    <div className="App">
-      <h1>Survey Manager</h1>
-      <div className="side-by-side">
-        <section className="column">
-          <h2>Surveys</h2>
-          <form onSubmit={handleCreateSurvey}>
-            <input value={surveyName} onChange={(e) => setSurveyName(e.target.value)} placeholder="Enter survey name" />
-            <button type="submit">Create</button>
-          </form>
-          {surveys.length === 0 ? (
-            <p>No surveys yet.</p>
-          ) : (
-            <ul>
-              {surveys.map(survey => (
-                <li key={survey.id}>
-                  {survey.name}
-                  <button onClick={() => handleDeleteSurvey(survey.id)}>Delete</button>
-                  <button onClick={() => setSelectedSurveyId(survey.id)}>View</button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-        <section className="column">
-          <h2>Respondents</h2>
-          <form onSubmit={handleCreateRespondent}>
-            <input value={respondentFullName} onChange={(e) => setRespondentFullName(e.target.value)} placeholder="Full name" />
-            <input type="email" value={respondentEmail} onChange={(e) => setRespondentEmail(e.target.value)} placeholder="Email" />
-            <button type="submit">Create</button>
-          </form>
-          {respondents.length === 0 ? (
-            <p>No respondents yet.</p>
-          ) : (
-            <ul>
-              {respondents.map(respondent => (
-                <li key={respondent.id}>
-                  {respondent.fullName} ({respondent.email})
-                  <button onClick={() => handleDeleteRespondent(respondent.id)}>Delete</button>
-                  {selectedSurveyId && (
-                    <button onClick={() => handleAssociateRespondent(selectedSurveyId, respondent.id)}>Add</button>
-                  )}
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-        <section className="column">
-          <h2>Questions</h2>
-          <form onSubmit={handleCreateQuestion}>
-            <input value={questionText} onChange={(e) => setQuestionText(e.target.value)} placeholder="Enter question text" />
-            <button type="submit">Create</button>
-          </form>
-          {questions.length === 0 ? (
-            <p>No questions yet.</p>
-          ) : (
-            <ul>
-              {questions.map(question => (
-                <li key={question.id}>
-                  {question.text}
-                  <button onClick={() => handleDeleteQuestion(question.id)}>Delete</button>
-                  {selectedSurveyId && (
-                    <button onClick={() => handleAssociateQuestion(selectedSurveyId, question.id)}>Add</button>
-                  )}
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
+    <Router>
+      <div className="App">
+        <Routes>
+          <Route
+            path="/auth"
+            element={<AuthPage onSignIn={handleSignIn} dbPromise={dbPromise} />}
+          />
+          <Route
+            path="/"
+            element={
+              user ? (
+                <SurveyApp user={user} onSignOut={handleSignOut} dbPromise={dbPromise} />
+              ) : (
+                <Navigate to="/auth" />
+              )
+            }
+          />
+          <Route
+            path="/responses"
+            element={
+              user ? (
+                <SurveyResponsePage user={user} dbPromise={dbPromise} />
+              ) : (
+                <Navigate to="/auth" />
+              )
+            }
+          />
+          <Route path="*" element={<Navigate to={user ? '/' : '/auth'} />} />
+        </Routes>
       </div>
-      
-      {selectedSurveyId && (
-        <section className="details">
-          <h2>Selected Survey: {surveys.find(s => s.id === selectedSurveyId)?.name}</h2>
-          <div className="side-by-side">
-            <div className="column">
-              <h3>Respondents</h3>
-              {getSurveyRespondents().length === 0 ? (
-                <p>No respondents assigned.</p>
-              ) : (
-                <ul>
-                  {getSurveyRespondents().map(r => (
-                    <li key={r.id}>{r.fullName} ({r.email})</li>
-                  ))}
-                </ul>
-              )}
-            </div>
-            <div className="column">
-              <h3>Questions</h3>
-              {getSurveyQuestions().length === 0 ? (
-                <p>No questions assigned.</p>
-              ) : (
-                <ul>
-                  {getSurveyQuestions().map(q => (
-                    <li key={q.id}>{q.text}</li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          </div>
-          <button onClick={() => setSelectedSurveyId(null)}>Close</button>
-        </section>
-      )}
-    </div>
+    </Router>
   );
 }
 
